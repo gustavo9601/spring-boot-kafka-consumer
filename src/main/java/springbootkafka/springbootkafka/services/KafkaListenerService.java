@@ -3,6 +3,7 @@ package springbootkafka.springbootkafka.services;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -27,28 +28,58 @@ public class KafkaListenerService {
 
     }
 
-    @KafkaListener(topics = {"topic-users"}, groupId = "consumidor-springboot")
-    public void listenUsers(String message) {
+    // Sin especfiicar el offset, siempre se posicionara sobre el offset actual
+    @KafkaListener(topics = {"topic-pruebas-consumer-1-partition"}, groupId = "consumidor-inicial")
+    public void listenUsers(
+            @Payload String message,
+            @Header(KafkaHeaders.RECEIVED_PARTITION_ID) int partition,
+            @Header(KafkaHeaders.OFFSET) int offset
+    ) {
+        logger.info("Mensaje recibido [consumidor-inicial]: [{}] | particion: {} | offset: {}", message, partition, offset);
+    }
 
-        try {
-            Thread.sleep(5000);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
+    @KafkaListener(topics = {"topic-pruebas-consumer-1-partition"}, groupId = "consumidor-secundario")
+    public void listenUsers2(
+            @Payload String message,
+            @Header(KafkaHeaders.RECEIVED_PARTITION_ID) int partition,
+            @Header(KafkaHeaders.OFFSET) int offset
+    ) {
+        logger.info("Mensaje recibido [consumidor-secundario]: [{}] | particion: {} | offset: {}", message, partition, offset);
+    }
 
-        ObjectMapper mapper = new ObjectMapper();
-        // mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-        // mapper.configure(DeserializationFeature.ACCEPT_EMPTY_STRING_AS_NULL_OBJECT, true);
-        User user = null;
-        try {
-            user = mapper.readValue(message, User.class);
-        } catch (JsonProcessingException e) {
-            logger.error("No se pudo hacer la conversion");
-        }
+    // Con esta configuracion cada ves que se reinicie ira a tomar desde el principio hasta el offset actual
+    @KafkaListener(
+            groupId = "consumidor-tercero",
+            topicPartitions = @TopicPartition(
+                    topic = "topic-pruebas-consumer-1-partition",
+                    partitionOffsets = {
+                            @PartitionOffset(partition = "0", initialOffset = "0", relativeToCurrent = "false")
+                    }
+            )
+    )
+    public void listenUsers3(
+            @Header(KafkaHeaders.RECEIVED_MESSAGE_KEY) String key,
+            @Payload String message,
+            @Header(KafkaHeaders.RECEIVED_PARTITION_ID) int partition,
+            @Header(KafkaHeaders.OFFSET) int offset
+    ) {
+        logger.info("Mensaje recibido [consumidor-tercero]: [{}] | key: {} |particion: {} | offset: {}", message, key, partition, offset);
+    }
 
-        logger.info("Usuario recibido: {}", message);
-        logger.info("Usuario mapeado: " + user);
-
+    // Con esta configuracion setea una sola particion, y tomara el offset actual
+    @KafkaListener(
+            groupId = "consumidor-cuarto",
+            topicPartitions = @TopicPartition(
+                    topic = "topic-pruebas-consumer-1-partition",
+                    partitionOffsets = {
+                            @PartitionOffset(partition = "0", initialOffset = "0", relativeToCurrent = "true")
+                    }
+            )
+    )
+    public void listenUsers4(
+            ConsumerRecord<String, String> consumerRecord
+    ) {
+        logger.info("Mensaje recibido [consumidor-cuarto]: [{}] | particion: {} | offset: {} | key {} | topic {}", consumerRecord.value(), consumerRecord.partition(), consumerRecord.offset(), consumerRecord.key(), consumerRecord.topic());
     }
 
 
